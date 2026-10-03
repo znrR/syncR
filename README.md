@@ -1,15 +1,11 @@
 # syncR
 
-Play your Mac's audio on **two output devices at once – in sync, with one volume control.**
+I was tired of fiddling around with Audio MIDI Setup to get my Poly Sync 20 in sync with my monitor speakers – no matter what I tried (combined audio device, macOS built-in sync feature), it just didn't work. The Poly Sync, like many other USB speakers, has a DSP built in which delays the audio. On top of that, the **Multi-Output Device**:
 
-A small macOS menu bar app for setups like *USB speakerphone + monitor speakers*, where macOS's own
-**Multi-Output Device** falls short:
-
-- **No volume control.** A Multi-Output Device has no master volume – the keyboard keys and the
+- **has no joint volume control.** A Multi-Output Device has no master volume – the keyboard keys and the
   menu bar slider do nothing.
-- **Out of sync.** Many devices process audio internally (echo cancellation, DSP, Bluetooth …) and
-  don't report that delay to macOS. A speakerphone can easily be 80 ms behind the other speaker,
-  which sounds like an echo.
+- **can not sync the internal delay of the USB speaker.** Many devices process audio internally (echo cancellation, DSP, Bluetooth …) and
+  don't report that delay to macOS. A speakerphone can easily be 80 ms behind the other speaker...
 
 syncR fixes both:
 
@@ -29,24 +25,33 @@ original output. It plays the audio through a private aggregate device made of y
 keeps the second device's hardware volume at 100 % while it's on. The second device's own
 microphone is switched off in the aggregate, so no microphone indicator stays lit.
 
-When syncR is off, audio simply plays on the main device.
+When syncR is disabled, audio simply plays on the main device.
 
 ## Requirements
 
-- macOS 15 or later
-- Swift toolchain (Xcode or Command Line Tools: `xcode-select --install`)
+- macOS 15 or later (Apple silicon or Intel)
 
-## Build & install
+## Download
 
-```bash
-git clone https://github.com/znrR/syncr.git
-cd syncr
-./build.sh            # builds ~/Applications/syncR.app (ad-hoc signed)
-open ~/Applications/syncR.app
-```
+1. Download `syncR-x.y.zip` from [Releases](https://github.com/znrR/syncr/releases), unzip it and move
+   `syncR.app` to your Applications folder.
+2. The app is not notarized by Apple, so macOS blocks the first start. Open it once, then go to
+   **System Settings → Privacy & Security** and click **Open Anyway**. Or in Terminal:
 
-On first start macOS asks for **System Audio Recording** permission (required) and, when you
-measure, for the **Microphone**.
+       xattr -dr com.apple.quarantine /Applications/syncR.app
+
+On first start macOS asks for **System Audio Recording** permission (required) and, to measure, for the **Microphone**.
+
+## Build from source
+
+Needs a Swift toolchain (Xcode or Command Line Tools: `xcode-select --install`).
+
+    git clone https://github.com/znrR/syncr.git
+    cd syncr
+    ./build.sh            # builds ~/Applications/syncR.app (ad-hoc signed)
+    open ~/Applications/syncR.app
+
+`./release.sh` builds a universal zip into `build/`.
 
 ## Setup
 
@@ -57,13 +62,11 @@ measure, for the **Microphone**.
    **Measure delay**.
 4. Turn on **syncR on**. Adjust the balance with the per-device volume sliders.
 
-Tip: for calls, turn syncR off. Speakerphones cancel echo only for audio they play themselves.
+Tip: for calls & video conferencing, turn syncR off. Speakerphones cancel echo only for audio they play themselves.
 
 ## Command line tools (optional)
 
-```bash
-tools/build.sh        # builds syncrctl and syncr-ltas into ~/.local/bin
-```
+    tools/build.sh        # builds syncrctl and syncr-ltas into ~/.local/bin
 
 - `syncrctl state` – current settings · `syncrctl set '{"secondDB": 3}'` – change settings
 - `syncrctl measure 60 music` – record 60 s of system audio + the measurement mic (enable
@@ -73,11 +76,11 @@ tools/build.sh        # builds syncrctl and syncr-ltas into ~/.local/bin
 
 ## Limitations
 
-- The app is ad-hoc signed. If macOS blocks it, build it yourself as shown above.
+- The app is ad-hoc signed, not notarized (see Download).
 - Both devices play the full range; there is no crossover.
 - Device delays can differ slightly between low and high frequencies – the measured value is
   tuned for mids/highs (2 kHz clicks).
 
 ## License
 
-MIT
+No license, do whatever you want with it :) hope it fixes your sync problem! (The Unlicense)
