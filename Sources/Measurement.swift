@@ -1,11 +1,10 @@
-// Delay calibration (clicks on both devices, recorded with a microphone) and a recorder
-// for longer measurements (system audio reference + microphone).
+// Delay calibration: clicks on both devices, recorded with a microphone.
 import CoreAudio
 import Foundation
 
 /// Builds a private aggregate of the given devices. Returns the aggregate and the index of the
 /// first input stream belonging to `micUID` (input streams are ordered like the sub-devices).
-private func makeAggregate(_ uids: [String], main: String, micUID: String, taps: [[String: Any]] = []) throws -> (AudioObjectID, Int) {
+private func makeAggregate(_ uids: [String], main: String, micUID: String) throws -> (AudioObjectID, Int) {
   var subs: [[String: Any]] = []
   for u in uids where !subs.contains(where: { $0[kAudioSubDeviceUIDKey] as? String == u }) {
     subs.append(u == main ? [kAudioSubDeviceUIDKey: u] : [kAudioSubDeviceUIDKey: u, kAudioSubDeviceDriftCompensationKey: 1])
@@ -18,10 +17,9 @@ private func makeAggregate(_ uids: [String], main: String, micUID: String, taps:
     micIndex += streamCount(d, kAudioObjectPropertyScopeInput)
   }
   guard found else { throw syncrError("Microphone not found") }
-  var desc: [String: Any] = [kAudioAggregateDeviceUIDKey: "de.r4sp.syncr.measure.\(UUID().uuidString)",
+  let desc: [String: Any] = [kAudioAggregateDeviceUIDKey: "de.r4sp.syncr.measure.\(UUID().uuidString)",
     kAudioAggregateDeviceNameKey: "syncR Measurement", kAudioAggregateDeviceIsPrivateKey: 1,
     kAudioAggregateDeviceMainSubDeviceKey: main, kAudioAggregateDeviceSubDeviceListKey: subs]
-  if !taps.isEmpty { desc[kAudioAggregateDeviceTapListKey] = taps; desc[kAudioAggregateDeviceTapAutoStartKey] = 1 }
   var agg = AudioObjectID(kAudioObjectUnknown)
   let st = AudioHardwareCreateAggregateDevice(desc as CFDictionary, &agg)
   guard st == noErr else { throw syncrError("Could not create measurement device", st) }
@@ -110,45 +108,5 @@ enum Calibrator {
     let sorted = diffs.sorted()
     return CalibrationResult(delayMs: sorted[sorted.count / 2], spreadMs: sorted.last! - sorted.first!,
                              snr: snrs.sorted()[snrs.count / 2])
-  }
-}
-
-enum Recorder {
-  /// Records `seconds` of system audio (reference, mono) and the microphone side by side as
-  /// interleaved Float32 (ref, mic) at 48 kHz.
-  static func record(seconds: Double, to url: URL, mainUID: String, micUID: String) throws -> Int {
-    let proc = ownProcessObject()
-    let desc = CATapDescription(__stereoGlobalTapButExcludeProcesses: proc != 0 ? [NSNumber(value: proc)] : [])
-    desc.uuid = UUID(); desc.name = "syncR Measurement"; desc.isPrivate = true; desc.muteBehavior = .unmuted
-    var tap = AudioObjectID(kAudioObjectUnknown)
-    let st = AudioHardwareCreateProcessTap(desc, &tap)
-    guard st == noErr else { throw syncrError("System audio capture failed", st) }
-    defer { AudioHardwareDestroyProcessTap(tap) }
-    let (agg, micIndex) = try makeAggregate([micUID], main: micUID, micUID: micUID,
-      taps: [[kAudioSubTapUIDKey: desc.uuid.uuidString, kAudioSubTapDriftCompensationKey: 1]])
-    defer { AudioHardwareDestroyAggregateDevice(agg) }
-    let total = Int(seconds * 48000)
-    let buf = UnsafeMutablePointer<Float>.allocate(capacity: total * 2); buf.initialize(repeating: 0, count: total * 2)
-    defer { buf.deallocate() }
-    var pos = 0
-    var io: AudioDeviceIOProcID?
-    AudioDeviceCreateIOProcIDWithBlock(&io, agg, nil) { _, inData, _, _, _ in
-      let ins = UnsafeMutableAudioBufferListPointer(UnsafeMutablePointer(mutating: inData))
-      guard let tb = ins.last, let r = tb.mData?.assumingMemoryBound(to: Float.self), micIndex < ins.count else { return }
-      let mb = ins[micIndex], mic = mb.mData?.assumingMemoryBound(to: Float.self)
-      let rc = Int(tb.mNumberChannels), mc = Int(mb.mNumberChannels), n = Int(tb.mDataByteSize) / 4 / max(1, rc)
-      for i in 0..<n where pos + i < total {
-        buf[2 * (pos + i)] = rc > 1 ? 0.5 * (r[i * rc] + r[i * rc + 1]) : r[i]
-        buf[2 * (pos + i) + 1] = mic?[i * mc] ?? 0
-      }
-      pos += n
-    }
-    guard let p = io else { throw syncrError("Could not start recording") }
-    AudioDeviceStart(agg, p)
-    Thread.sleep(forTimeInterval: seconds + 0.3)
-    AudioDeviceStop(agg, p); AudioDeviceDestroyIOProcID(agg, p)
-    let frames = min(pos, total)
-    try Data(bytes: buf, count: frames * 8).write(to: url)
-    return frames
   }
 }

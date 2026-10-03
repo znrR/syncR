@@ -11,6 +11,7 @@ done
 lipo -create build/syncR-arm64 build/syncR-x86_64 -output "$APP/Contents/MacOS/syncR"
 rm build/syncR-arm64 build/syncR-x86_64
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+mkdir -p "$APP/Contents/Resources" && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 codesign --force -s - "$APP"
 ditto -c -k --keepParent "$APP" "build/syncR-$VERSION.zip"
 echo "built: build/syncR-$VERSION.zip"

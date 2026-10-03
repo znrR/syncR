@@ -110,7 +110,6 @@ struct SetupView: View {
         }
         Text("Pause all audio, set a moderate volume and place the mic where you listen. syncR plays short clicks on both devices and sets the delay.")
           .font(.caption).foregroundStyle(.secondary)
-        Toggle("Allow remote measurements (syncrctl)", isOn: $m.remoteMeasurements)
       }
       Section {
         Toggle("Launch at login", isOn: Binding(get: { m.launchAtLogin }, set: { m.setLaunchAtLogin($0) }))

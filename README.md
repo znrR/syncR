@@ -1,86 +1,83 @@
 # syncR
 
-I was tired of fiddling around with Audio MIDI Setup to get my Poly Sync 20 in sync with my monitor speakers – no matter what I tried (combined audio device, macOS built-in sync feature), it just didn't work. The Poly Sync, like many other USB speakers, has a DSP built in which delays the audio. On top of that, the **Multi-Output Device**:
+**Play your Mac's audio on two speakers at once – in sync, with one volume control.**
 
-- **has no joint volume control.** A Multi-Output Device has no master volume – the keyboard keys and the
-  menu bar slider do nothing.
-- **can not sync the internal delay of the USB speaker.** Many devices process audio internally (echo cancellation, DSP, Bluetooth …) and
-  don't report that delay to macOS. A speakerphone can easily be 80 ms behind the other speaker...
+I have a Poly Sync 20 speaker on my desk and a monitor with built-in speakers, and I wanted
+music to play on both. Achieving this via the macOS Audio MIDI Setup and a Multi-Output Device failed:
 
-syncR fixes both:
+- **Sync fails.** The Poly Sync runs everything through a DSP (for echo cancellation and other stuff)
+  before it plays a sound – about 80 ms of delay that it never tells macOS about. So macOS happily
+  lines up the two devices, and one of them is still way behind. I assume many other USB and Bluetooth speakers
+  do this.
+- **No joint volume control.** A Multi-Output Device has no master volume. The keyboard keys
+  and the menu bar slider just stopped working.
 
-- **One volume for both devices.** The *main device* becomes the system output, so the keyboard,
-  the menu bar slider and the device's own buttons work as usual – the second device follows,
-  keeping the balance you set.
-- **Measured sync.** *Measure delay* plays short clicks on both devices, records them with any
-  microphone (an iPhone via Continuity works well) and sets the delay automatically. Fine-tune by
-  ear in 0.1 ms steps.
-- Per-device volume, a simple 3-band EQ per device, mute, detachable panel, launch at login.
+I couldn't find anything that fixes this, so I built syncR with the help of Claude Code.
 
-## How it works
+## What it does
 
-syncR captures all system audio with a Core Audio **process tap** (macOS 14.2+), muting the
-original output. It plays the audio through a private aggregate device made of your two outputs
-(clocked by the main device, drift-corrected for the second one), applies gain, EQ and delay, and
-keeps the second device's hardware volume at 100 % while it's on. The second device's own
-microphone is switched off in the aggregate, so no microphone indicator stays lit.
+- **Real sync, based on measuring.** Hit *Measure delay*: syncR plays a few clicks on each device, listens
+  with any microphone (my iPhone worked great) and sets the delay for you. Fine-tuning by
+  human ear can be done in the app in 0.1 ms steps.
 
-When syncR is disabled, audio simply plays on the main device.
+- **One master volume.** Your *main device* stays the normal system output, so the volume keys,
+  the menu bar slider and the speaker's own buttons work like always. The second device simply
+  follows along and keeps the balance which is set in the app.
 
-## Requirements
-
-- macOS 15 or later (Apple silicon or Intel)
+- **The little extras.** Volume per device, a simple bass/mid/treble EQ per device, mute and a panel
+  you can tear off the menu bar. Turn syncR off (e.g. for a conference call) and everything plays on
+  the main device again.
 
 ## Download
 
-1. Download `syncR-x.y.zip` from [Releases](https://github.com/znrR/syncr/releases), unzip it and move
-   `syncR.app` to your Applications folder.
-2. The app is not notarized by Apple, so macOS blocks the first start. Open it once, then go to
-   **System Settings → Privacy & Security** and click **Open Anyway**. Or in Terminal:
+**Download:** `syncR-x.y.zip` from [Releases](https://github.com/znrR/syncr/releases), unzip it
+and drag `syncR.app` into Applications. Should work on Apple silicon and Intel Macs with macOS 15 or later.
 
-       xattr -dr com.apple.quarantine /Applications/syncR.app
+The app isn't notarized by Apple, so macOS will refuse to open it the first time. Try once, then go
+to **System Settings → Privacy & Security** and click **Open Anyway**. Or, in Terminal:
 
-On first start macOS asks for **System Audio Recording** permission (required) and, to measure, for the **Microphone**.
+    xattr -dr com.apple.quarantine /Applications/syncR.app
 
-## Build from source
-
-Needs a Swift toolchain (Xcode or Command Line Tools: `xcode-select --install`).
+**Or build it yourself** (needs Xcode or the Command Line Tools – `xcode-select --install`):
 
     git clone https://github.com/znrR/syncr.git
     cd syncr
-    ./build.sh            # builds ~/Applications/syncR.app (ad-hoc signed)
+    ./build.sh
     open ~/Applications/syncR.app
 
-`./release.sh` builds a universal zip into `build/`.
+On first launch, macOS asks whether syncR may record system audio – it needs that to work. To
+measure the delay, it also asks for microphone access.
 
-## Setup
+## Set it up
 
-1. Click the speaker icon in the menu bar → gear icon.
-2. Choose the **main device** (gets the system volume, e.g. your speakerphone) and the
-   **second device**.
-3. Choose a **measurement mic**, pause all audio, put the mic where you listen and click
+1. Click the speaker icon in the menu bar, then the gear.
+2. Pick your **main device** (the one whose volume buttons you want to use – e.g. your
+   speakerphone) and your **second device**.
+3. Pick a **measurement mic**, pause your music, put the mic where you usually sit and click
    **Measure delay**.
-4. Turn on **syncR on**. Adjust the balance with the per-device volume sliders.
+4. Switch **syncR on** and adjust the balance with the two volume sliders.
 
-Tip: for calls & video conferencing, turn syncR off. Speakerphones cancel echo only for audio they play themselves.
+**Recommended:** Turn syncR off for Zoom, Teams & co. A speakerphone can only cancel the echo
+of sound it plays itself – sound from the second speaker would most likely leak back into your call.
 
-## Command line tools (optional)
+## How it works
 
-    tools/build.sh        # builds syncrctl and syncr-ltas into ~/.local/bin
+syncR grabs all system audio with a Core Audio *process tap* and mutes the original output. It
+then plays the audio through a private aggregate device made of your two speakers – clocked by the
+main device, with drift correction for the second – and applies the gain, EQ and delay along the
+way. While syncR is on, the second device's own hardware volume stays at 100 % and syncR does the
+level control. Its built-in microphone (if it has one) is switched off, so the orange mic indicator
+stays dark.
 
-- `syncrctl state` – current settings · `syncrctl set '{"secondDB": 3}'` – change settings
-- `syncrctl measure 60 music` – record 60 s of system audio + the measurement mic (enable
-  *Allow remote measurements* in Setup first)
-- `syncr-ltas ~/Library/Logs/syncR/measurements/music.f32` – tonal balance at the listening
-  position (1/3 octave, relative to system audio). Works with any music, no test signals needed.
+## Good to know
 
-## Limitations
-
-- The app is ad-hoc signed, not notarized (see Download).
-- Both devices play the full range; there is no crossover.
-- Device delays can differ slightly between low and high frequencies – the measured value is
-  tuned for mids/highs (2 kHz clicks).
+- Both speakers play the full frequency range; there's no crossover. I tried one, but it just made
+  the sound worse. The simple EQ is worth a try though.
+- Some devices delay low and high frequencies slightly differently. The measured value is tuned for
+  mids and highs, which is where sync matters most.
 
 ## License
 
-No license, do whatever you want with it :) hope it fixes your sync problem! (The Unlicense)
+No license, do whatever you want with it :) Hope it fixes your sync problem too! (The Unlicense)
+
+Created with the help of [Claude Code](https://claude.com/claude-code).

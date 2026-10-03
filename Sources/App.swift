@@ -5,8 +5,6 @@ import CoreAudio
 import AVFoundation
 import ServiceManagement
 
-let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/syncR")
-
 @MainActor final class Model: ObservableObject {
   let engine = Engine()
   @Published var p: Params { didSet { engine.update(p); save() } }
@@ -18,13 +16,10 @@ let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathCompon
   @Published var calibratedDelay: Double { didSet { UserDefaults.standard.set(calibratedDelay, forKey: "calibratedDelay") } }
   @Published var calibration = ""
   @Published var calibrating = false
-  @Published var remoteMeasurements = false   // allow `syncrctl measure` (uses the microphone)
   @Published var outputs: [AudioDevice] = []
   @Published var inputs: [AudioDevice] = []
   @Published var launchAtLogin = SMAppService.mainApp.status == .enabled
   private var listening = false
-  private var meterTimer: Timer?
-  private var observers: [NSObjectProtocol] = []
 
   init() {
     let d = UserDefaults.standard
@@ -41,7 +36,6 @@ let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathCompon
     calibratedDelay = d.object(forKey: "calibratedDelay") != nil ? d.double(forKey: "calibratedDelay") : 0
     engine.update(q)
     refreshDevices()
-    setupRemote()
     if d.bool(forKey: "active") && !mainUID.isEmpty && !secondUID.isEmpty { setActive(true) }
     else { status = mainUID.isEmpty || secondUID.isEmpty ? "Choose two devices in Setup" : "off" }
   }
@@ -60,7 +54,6 @@ let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathCompon
                    ("mainLow", p.mainLow), ("mainMid", p.mainMid), ("mainHigh", p.mainHigh),
                    ("secondLow", p.secondLow), ("secondMid", p.secondMid), ("secondHigh", p.secondHigh)] { d.set(v, forKey: k) }
     d.set(p.eqOn, forKey: "eqOn")
-    writeState()
   }
 
   // MARK: on / off
@@ -81,7 +74,6 @@ let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathCompon
       engine.stop(); active = false; status = "off"
     }
     UserDefaults.standard.set(active, forKey: "active")
-    writeState()
   }
 
   func restartIfActive() {
@@ -151,72 +143,5 @@ let logDir = FileManager.default.homeDirectoryForCurrentUser.appendingPathCompon
     do { if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() } }
     catch { calibration = "Launch at login: \(error.localizedDescription)" }
     launchAtLogin = SMAppService.mainApp.status == .enabled
-  }
-
-  // MARK: remote control (syncrctl) and state file
-
-  private func setupRemote() {
-    let c = DistributedNotificationCenter.default()
-    observers.append(c.addObserver(forName: .init("de.r4sp.syncr.set"), object: nil, queue: .main) { n in
-      let json = n.object as? String ?? "{}"; MainActor.assumeIsolated { self.applyRemote(json) } })
-    observers.append(c.addObserver(forName: .init("de.r4sp.syncr.measure"), object: nil, queue: .main) { n in
-      let arg = n.object as? String ?? "30"; MainActor.assumeIsolated { self.remoteMeasure(arg) } })
-    meterTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in MainActor.assumeIsolated { self.meter() } }
-  }
-
-  private func applyRemote(_ json: String) {
-    guard let d = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] else { return }
-    var q = p
-    func num(_ k: String) -> Double? { (d[k] as? NSNumber)?.doubleValue }
-    if let v = num("masterDB") { q.masterDB = v }; if let v = num("mainDB") { q.mainDB = v }; if let v = num("secondDB") { q.secondDB = v }
-    if let v = num("delayMs") { q.delayMs = v }; if let v = d["eqOn"] as? Bool { q.eqOn = v }
-    if let v = num("mainLow") { q.mainLow = v }; if let v = num("mainMid") { q.mainMid = v }; if let v = num("mainHigh") { q.mainHigh = v }
-    if let v = num("secondLow") { q.secondLow = v }; if let v = num("secondMid") { q.secondMid = v }; if let v = num("secondHigh") { q.secondHigh = v }
-    if q != p { p = q } else { writeState() }
-    if let a = d["active"] as? Bool, a != active { setActive(a) }
-  }
-
-  private func remoteMeasure(_ arg: String) {
-    let reply = { (msg: String) in
-      DistributedNotificationCenter.default().postNotificationName(.init("de.r4sp.syncr.measured"), object: msg, userInfo: nil, deliverImmediately: true) }
-    guard remoteMeasurements else { reply("Remote measurements are off – enable them in Setup"); return }
-    guard !micUID.isEmpty else { reply("No measurement microphone selected"); return }
-    let parts = arg.split(separator: " "), secs = Double(parts.first ?? "30") ?? 30
-    let name = parts.count > 1 ? String(parts[1]) : "measurement"
-    requestMic { ok in
-      guard ok else { reply("Microphone access denied"); return }
-      let dir = logDir.appendingPathComponent("measurements")
-      try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-      let (m, mic) = (self.mainUID, self.micUID)
-      DispatchQueue.global().async {
-        let url = dir.appendingPathComponent("\(name).f32")
-        let msg: String
-        do { let frames = try Recorder.record(seconds: secs, to: url, mainUID: m, micUID: mic); msg = "done: \(url.path) (\(frames / 48000) s)" }
-        catch { msg = "failed: \(error.localizedDescription)" }
-        DispatchQueue.main.async { reply(msg) }
-      }
-    }
-  }
-
-  func writeState() {
-    func r(_ x: Double) -> Double { (x * 10).rounded() / 10 }
-    let d: [String: Any] = ["active": active, "mainUID": mainUID, "secondUID": secondUID, "micUID": micUID,
-      "masterDB": r(p.masterDB), "mainDB": r(p.mainDB), "secondDB": r(p.secondDB), "delayMs": r(p.delayMs), "eqOn": p.eqOn,
-      "mainLow": r(p.mainLow), "mainMid": r(p.mainMid), "mainHigh": r(p.mainHigh),
-      "secondLow": r(p.secondLow), "secondMid": r(p.secondMid), "secondHigh": r(p.secondHigh), "calibratedDelay": r(calibratedDelay)]
-    try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
-    try? JSONSerialization.data(withJSONObject: d, options: [.prettyPrinted, .sortedKeys]).write(to: logDir.appendingPathComponent("state.json"))
-  }
-
-  /// Level meter, written to the log only while remote measurements are enabled.
-  private func meter() {
-    let e = engine
-    let line = String(format: "%@ in %.1f dBFS | out main %.1f, second %.1f dBFS\n", ISO8601DateFormatter().string(from: Date()),
-                      20 * log10(max(e.inPeak, 1e-6)), 20 * log10(max(e.outPeakMain, 1e-6)), 20 * log10(max(e.outPeakSecond, 1e-6)))
-    e.inPeak = 0; e.outPeakMain = 0; e.outPeakSecond = 0
-    guard remoteMeasurements else { return }
-    let url = logDir.appendingPathComponent("levels.log")
-    if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(Data(line.utf8)); try? h.close() }
-    else { try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true); try? Data(line.utf8).write(to: url) }
   }
 }

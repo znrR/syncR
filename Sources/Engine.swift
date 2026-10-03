@@ -36,9 +36,6 @@ final class Engine: @unchecked Sendable {
   private var ringPos = 0
   private var delaySamples = 0, delaySecond = true
 
-  // Meters (read by the UI thread, reset after reading)
-  var inPeak: Float = 0, outPeakMain: Float = 0, outPeakSecond: Float = 0
-
   private var tapID = AudioObjectID(kAudioObjectUnknown)
   private var aggID = AudioObjectID(kAudioObjectUnknown)
   private var ioProc: AudioDeviceIOProcID?
@@ -81,7 +78,6 @@ final class Engine: @unchecked Sendable {
       smMaster += k * (gMaster - smMaster); smMain += k * (gMain - smMain); smSecond += k * (gSecond - smSecond)
       smFollow += k * ((followMute ? 0 : followGain) - smFollow)
       let l = tp[i * tapCh], r = tapCh > 1 ? tp[i * tapCh + 1] : l
-      inPeak = max(inPeak, abs(l), abs(r))
       var ml = l, mr = r, sl = l, sr2 = r
       if eq { ml = eqMain.run(ml, 0); mr = eqMain.run(mr, 1); sl = eqSecond.run(sl, 0); sr2 = eqSecond.run(sr2, 1) }
       // delay whichever device is earlier
@@ -96,7 +92,6 @@ final class Engine: @unchecked Sendable {
       // main device: its hardware volume is the system volume, so no follow gain here
       let gm = smMaster * smMain, gs = smMaster * smSecond * smFollow
       ml *= gm; mr *= gm; sl *= gs; sr2 *= gs
-      outPeakMain = max(outPeakMain, abs(ml), abs(mr)); outPeakSecond = max(outPeakSecond, abs(sl), abs(sr2))
       if mCh >= 2 { mo[i * mCh] = softLimit(ml); mo[i * mCh + 1] = softLimit(mr) } else { mo[i] = softLimit(0.5 * (ml + mr)) }
       if sCh >= 2 { so[i * sCh] = softLimit(sl); so[i * sCh + 1] = softLimit(sr2) } else { so[i] = softLimit(0.5 * (sl + sr2)) }
     }

@@ -6,5 +6,6 @@ APP=${APP:-~/Applications/syncR.app}
 mkdir -p "$APP/Contents/MacOS"
 swiftc -O -swift-version 5 -parse-as-library Sources/*.swift -o "$APP/Contents/MacOS/syncR"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
+mkdir -p "$APP/Contents/Resources" && cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 codesign --force -s - "$APP"
 echo "built: $APP"
