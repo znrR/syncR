@@ -2,7 +2,7 @@
 
 **Play your Mac's audio on two speakers at once – in sync, with one volume control.**
 
-I have a Poly Sync 20 speaker on my desk and a monitor with built-in speakers, and I wanted
+I have a Poly Sync 20 speaker on my desk and a display with built-in speakers, and I wanted
 music to play on both. Achieving this via the macOS Audio MIDI Setup and a Multi-Output Device failed:
 
 - **Sync fails.** The Poly Sync runs everything through a DSP (for echo cancellation and other stuff)
@@ -10,7 +10,7 @@ music to play on both. Achieving this via the macOS Audio MIDI Setup and a Multi
   lines up the two devices, and one of them is still way behind. I assume many other USB and Bluetooth speakers
   do this.
 - **No joint volume control.** A Multi-Output Device has no master volume. The keyboard keys
-  and the menu bar slider just stopped working.
+  and the menu bar slider are disaybled.
 
 I couldn't find anything that fixes this, so I built syncR with the help of Claude Code.
 
