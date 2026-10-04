@@ -43,7 +43,7 @@ to **System Settings → Privacy & Security** and click **Open Anyway**. Or, in 
     git clone https://github.com/znrR/syncr.git
     cd syncr
     ./build.sh
-    open ~/Applications/syncR.app
+    open /Applications/syncR.app
 
 On first launch, macOS asks whether syncR may record system audio – it needs that to work. To
 measure the delay, it also asks for microphone access.
